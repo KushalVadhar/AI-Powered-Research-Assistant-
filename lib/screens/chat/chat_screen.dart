@@ -137,6 +137,32 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           }
 
+          if (state is ChatError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppDimensions.screenPaddingH),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline_rounded,
+                        color: colorScheme.error, size: 48),
+                    const SizedBox(height: AppDimensions.spacingMd),
+                    Text(state.message,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium),
+                    const SizedBox(height: AppDimensions.spacingLg),
+                    ElevatedButton(
+                      onPressed: () => context
+                          .read<ChatBloc>()
+                          .add(LoadMessages(widget.conversationId)),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
           return const SizedBox.shrink();
         },
       ),

@@ -36,6 +36,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   DocumentStatus? _selectedStatus;
 
   @override
+  void initState() {
+    super.initState();
+    context.read<DocumentBloc>().add(const LoadDocuments());
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();

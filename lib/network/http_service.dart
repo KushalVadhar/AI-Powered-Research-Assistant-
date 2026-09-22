@@ -198,26 +198,62 @@ class HttpService {
   ) {
     final responseData = response.data;
 
-    // If the response is our standard API format
+    // If the response is a Map
     if (responseData is Map<String, dynamic>) {
-      final apiResponse = ApiResponse.fromJson(responseData, fromJson);
+      // 1. If it's explicitly the ApiResponse format: { "success": true, "data": ... }
+      if (responseData.containsKey('success') && responseData.containsKey('data')) {
+        final apiResponse = ApiResponse.fromJson(responseData, fromJson);
+        if (apiResponse.success) {
+          return ApiSuccess(apiResponse.data as T);
+        } else {
+          return ApiFailure(
+            ApiException(
+              message: apiResponse.message,
+              statusCode: response.statusCode,
+            ),
+          );
+        }
+      }
 
-      if (apiResponse.success) {
-        return ApiSuccess(apiResponse.data as T);
-      } else {
+      // 2. If it's an explicit failure response: { "success": false, "message": "..." }
+      if (responseData['success'] == false) {
         return ApiFailure(
           ApiException(
-            message: apiResponse.message,
+            message: responseData['message'] as String? ?? 'Request failed',
             statusCode: response.statusCode,
           ),
         );
       }
+
+      // 3. Direct JSON payload (e.g. FastAPI responses like ChatQueryResponse, SummaryResponse)
+      if (fromJson != null) {
+        try {
+          return ApiSuccess(fromJson(responseData));
+        } catch (e) {
+          return ApiFailure(
+            ApiException(
+              message: 'Failed to parse response payload: $e',
+              statusCode: response.statusCode,
+            ),
+          );
+        }
+      }
+
+      return ApiSuccess(responseData as T);
     }
 
-    // If the response is a raw value (not our standard format),
-    // try to parse it directly
+    // If the response is a raw value (not a Map), parse directly
     if (fromJson != null) {
-      return ApiSuccess(fromJson(responseData));
+      try {
+        return ApiSuccess(fromJson(responseData));
+      } catch (e) {
+        return ApiFailure(
+          ApiException(
+            message: 'Failed to parse response: $e',
+            statusCode: response.statusCode,
+          ),
+        );
+      }
     }
 
     return ApiSuccess(responseData as T);

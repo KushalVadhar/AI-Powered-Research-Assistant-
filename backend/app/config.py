@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # AI Models
-    embedding_model: str = "text-embedding-004"
-    llm_model: str = "gemini-1.5-flash"
+    embedding_model: str = "gemini-embedding-001"
+    llm_model: str = "gemini-3.6-flash"
     embedding_dimension: int = 768
 
     # Chunking & RAG Defaults
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         return bool(self.gemini_api_key)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

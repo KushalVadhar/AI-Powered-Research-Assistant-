@@ -1,5 +1,6 @@
 """Google Gemini AI integration service for dense embeddings and grounded LLM generation."""
 
+import asyncio
 import hashlib
 import math
 import random
@@ -13,18 +14,21 @@ class GeminiService:
     def __init__(self, api_key: Optional[str] = None):
         self.settings = get_settings()
         self.api_key = api_key or self.settings.gemini_api_key
-        self._client = None
+        self._model = None
+        self._live = False
 
         if self.api_key:
             try:
-                from google import genai
-                self._client = genai.Client(api_key=self.api_key)
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key, transport="rest")
+                self._model = genai.GenerativeModel(self.settings.llm_model)
+                self._live = True
             except Exception as e:
-                print(f"[GeminiService] Failed to initialize live Gemini client: {e}. Using simulated fallback.")
+                print(f"[GeminiService] Failed to initialize Gemini model: {e}. Using simulated fallback.")
 
     @property
     def is_live(self) -> bool:
-        return self._client is not None
+        return self._live
 
     async def get_embedding(self, text: str) -> List[float]:
         """Generates a 768-dimensional embedding for a single text chunk."""
@@ -34,30 +38,42 @@ class GeminiService:
     async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
         Generates 768-dimensional vector embeddings for a list of strings.
-        Uses text-embedding-004 when API key is active; otherwise produces deterministic pseudo-embeddings.
+        Uses gemini-embedding-001 with outputDimensionality=768 when API key is active.
         """
-        if self._client:
-            try:
-                results: List[List[float]] = []
-                for text in texts:
-                    response = self._client.models.embed_content(
-                        model=self.settings.embedding_model,
-                        contents=text,
-                    )
-                    # Handle both single and batch embedding response objects
-                    if hasattr(response, "embedding") and response.embedding:
-                        values = response.embedding.values
-                    elif hasattr(response, "embeddings") and response.embeddings:
-                        values = response.embeddings[0].values
-                    else:
-                        values = self._generate_pseudo_embedding(text)
-                    results.append(list(values))
-                return results
-            except Exception as e:
-                print(f"[GeminiService] Live embedding API call failed: {e}. Falling back to pseudo-embeddings.")
+        results: List[List[float]] = []
+        for text in texts:
+            emb = await asyncio.to_thread(self._fetch_embedding_rest, text)
+            if emb:
+                results.append(emb)
+            else:
+                results.append(self._generate_pseudo_embedding(text))
+        return results
 
-        # Deterministic offline fallback
-        return [self._generate_pseudo_embedding(t) for t in texts]
+    def _fetch_embedding_rest(self, text: str) -> Optional[List[float]]:
+        """Calls Google Generative Language API directly for 768-dim embeddings."""
+        if not self.api_key:
+            return None
+        import json
+        import urllib.request
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={self.api_key}"
+        data = {
+            "content": {"parts": [{"text": text}]},
+            "outputDimensionality": 768,
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                res = json.loads(r.read().decode("utf-8"))
+                values = res.get("embedding", {}).get("values", [])
+                if values and len(values) == 768:
+                    return values
+        except Exception:
+            pass
+        return None
 
     async def generate_response(
         self,
@@ -65,25 +81,19 @@ class GeminiService:
         system_instruction: Optional[str] = None,
     ) -> str:
         """
-        Generates text completion using Gemini 1.5 Flash.
+        Generates text completion using Gemini Flash.
         """
-        if self._client:
+        if self._live and self._model:
             try:
-                from google.genai import types
-                config = types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.2,
-                ) if system_instruction else None
-
-                response = self._client.models.generate_content(
-                    model=self.settings.llm_model,
-                    contents=prompt,
-                    config=config,
+                full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(self._model.generate_content, full_prompt),
+                    timeout=12.0,
                 )
                 if response and response.text:
                     return response.text.strip()
             except Exception as e:
-                print(f"[GeminiService] Live text generation failed: {e}. Falling back to simulated response.")
+                print(f"[GeminiService] Live text generation failed or timed out: {e}. Falling back to simulated response.")
 
         # Offline fallback response based on prompt context
         return self._generate_simulated_response(prompt)

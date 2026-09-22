@@ -19,8 +19,20 @@ import '../../widgets/common/app_error_widget.dart';
 import '../../widgets/common/app_loader.dart';
 import '../../widgets/dialogs/confirm_dialog.dart';
 
-class ConversationHistoryScreen extends StatelessWidget {
+class ConversationHistoryScreen extends StatefulWidget {
   const ConversationHistoryScreen({super.key});
+
+  @override
+  State<ConversationHistoryScreen> createState() =>
+      _ConversationHistoryScreenState();
+}
+
+class _ConversationHistoryScreenState extends State<ConversationHistoryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    context.read<ChatBloc>().add(const LoadConversations());
+  }
 
   Future<void> _startNewConversation(BuildContext context) async {
     final repo = context.read<ChatRepository>();

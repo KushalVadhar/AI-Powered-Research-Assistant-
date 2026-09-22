@@ -4,6 +4,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'blocs/auth/auth_cubit.dart';
+import 'blocs/auth/auth_state.dart';
+import 'blocs/chat/chat_bloc.dart';
+import 'blocs/chat/chat_event.dart';
+import 'blocs/documents/document_bloc.dart';
+import 'blocs/documents/document_event.dart';
 import 'config/app_theme.dart';
 import 'config/router/app_router.dart';
 import 'blocs/theme/theme_cubit.dart';
@@ -50,22 +55,30 @@ class _AppState extends State<App> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ThemeCubit, ThemeState>(
-      builder: (context, themeState) {
-        return MaterialApp.router(
-          // ── Identity ───────────────────────────────────────
-          title: 'AI Research Assistant',
-          debugShowCheckedModeBanner: false,
-
-          // ── Theming ────────────────────────────────────────
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: themeState.themeMode,
-
-          // ── Navigation ─────────────────────────────────────
-          routerConfig: _router ?? AppRouter.router,
-        );
+    return BlocListener<AuthCubit, AuthState>(
+      listener: (context, authState) {
+        if (authState is Authenticated) {
+          context.read<DocumentBloc>().add(const LoadDocuments());
+          context.read<ChatBloc>().add(const LoadConversations());
+        }
       },
+      child: BlocBuilder<ThemeCubit, ThemeState>(
+        builder: (context, themeState) {
+          return MaterialApp.router(
+            // ── Identity ───────────────────────────────────────
+            title: 'AI Research Assistant',
+            debugShowCheckedModeBanner: false,
+
+            // ── Theming ────────────────────────────────────────
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeState.themeMode,
+
+            // ── Navigation ─────────────────────────────────────
+            routerConfig: _router ?? AppRouter.router,
+          );
+        },
+      ),
     );
   }
 }
